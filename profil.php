@@ -1,0 +1,477 @@
+<?php
+require_once 'include/session.php';
+require_once 'BD/bd.php';
+
+// Handle unequip actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unequip_armure') {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
+        echo json_encode(['success' => false, 'message' => 'Non connecté']);
+        exit;
+    }
+    $userId = (int) $_SESSION['user_id'];
+    $result = DesequiperArmure($userId);
+    if ($result['success']) {
+        $_SESSION['maxHP'] = $result['maxHP'];
+        $_SESSION['pointDeVie'] = $result['pointDeVie'];
+    }
+    echo json_encode(array_merge($result, [
+        'newMaxHP' => (int) ($_SESSION['maxHP'] ?? 100),
+        'newPV' => (int) ($_SESSION['pointDeVie'] ?? 0),
+    ]));
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unequip_arme') {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
+        echo json_encode(['success' => false, 'message' => 'Non connecté']);
+        exit;
+    }
+    $userId = (int) $_SESSION['user_id'];
+    $result = DesequiperArme($userId);
+    echo json_encode($result);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'demande_or') {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
+        echo json_encode(['success' => false, 'message' => 'Non connecté']);
+        exit;
+    }
+    echo json_encode(SoumettreDemandeOr((int)$_SESSION['user_id']));
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_password') {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
+        echo json_encode(['success' => false, 'message' => 'Non connecté']);
+        exit;
+    }
+    $userId  = (int) $_SESSION['user_id'];
+    $actuel  = $_POST['current_password']  ?? '';
+    $nouveau = $_POST['new_password']      ?? '';
+    $confirm = $_POST['confirm_password']  ?? '';
+
+    if ($nouveau !== $confirm) {
+        echo json_encode(['success' => false, 'message' => 'Les mots de passe ne correspondent pas.']);
+        exit;
+    }
+
+    echo json_encode(ChangerMotDePasse($userId, $actuel, $nouveau));
+    exit;
+}
+?>
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/styles_dark.css">
+    <title>DarQuest Profil</title>
+</head>
+
+<body>
+    <?php require 'include/header.php'; ?>
+    <main>
+        <h1>Profil</h1>
+
+        <?php if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']): ?>
+            <p class="locked-message">Accès réservé aux utilisateurs connectés.</p>
+            <p><a class="btnAutre" href="index.php">Accueil</a></p>
+        <?php else: ?>
+            <?php
+            $userId = (int) $_SESSION['user_id'];
+            $userName = htmlspecialchars($_SESSION['username'] ?? 'Joueur', ENT_QUOTES, 'UTF-8');
+            $hp = GetJoueurHP($userId);
+            $pv = $hp['pointDeVie'];
+            $maxHP = $hp['maxHP'];
+            $pvPct = $maxHP > 0 ? min(100, (int) round($pv / $maxHP * 100)) : 0;
+            $armureEquipee = GetArmureEquipee($userId);
+            $armeEquipee   = GetArmeEquipee($userId);
+            $enigmaStats   = GetEnigmaStats($userId);
+            $questStats    = GetQuestStats($userId);
+            $ranked        = GetRankedData($userId);
+            $rkColor       = getRankColor($ranked['rang']);
+            $rkName        = getRankName($ranked['rang']);
+
+            // Demande d'or statut
+            $statutDemande   = GetStatutDemandeOr($userId);
+            $nbDemandesUsees = $statutDemande['nbDemandes'];
+            $demandeEnAttente = $statutDemande['enAttente'];
+
+            // Fetch bonuses from DB
+            $healBonus = 0;
+            $goldBonus = 0;
+            $damageModifier = 1.00;
+            $pdo = get_pdo();
+            if ($pdo) {
+                try {
+                    $s = $pdo->prepare('SELECT healBonus, goldBonus, damageModifier FROM Joueurs WHERE idJoueur = :id LIMIT 1');
+                    $s->execute([':id' => $userId]);
+                    $row = $s->fetch();
+                    $healBonus = (int) ($row['healBonus'] ?? 0);
+                    $goldBonus = (int) ($row['goldBonus'] ?? 0);
+                    $damageModifier = (float) ($row['damageModifier'] ?? 1.00);
+                } catch (PDOException $e) {
+                }
+            }
+            ?>
+
+            <div class="profil-container">
+            <div class="profil-col">
+
+                <!-- Stats -->
+                <div class="profil-stat-box">
+                    <h2><?= $userName ?></h2>
+                    <div class="profil-stat-row">
+                        <span class="profil-stat-label">Points de vie</span>
+                        <span class="profil-stat-value"><?= $pv ?> / <?= $maxHP ?></span>
+                    </div>
+                    <div class="profil-stat-row">
+                        <span class="profil-stat-label">HP max</span>
+                        <span class="profil-stat-value"><?= $maxHP ?></span>
+                    </div>
+                    <div class="profil-stat-row">
+                        <span class="profil-stat-label">Bonus de soin</span>
+                        <span class="profil-stat-value" style="color:<?= $healBonus >= 0 ? '#adf3ad' : '#f3adad' ?>;">
+                            <?= $healBonus >= 0 ? '+' : '' ?>    <?= $healBonus ?>%
+                        </span>
+                    </div>
+                    <div class="profil-stat-row">
+                        <span class="profil-stat-label">Bonus gold</span>
+                        <span class="profil-stat-value" style="color:<?= $goldBonus >= 0 ? '#ffd700' : '#f3adad' ?>;">
+                            <?= $goldBonus >= 0 ? '+' : '' ?>    <?= $goldBonus ?>%
+                        </span>
+                    </div>
+                    <div class="profil-stat-row">
+                        <span class="profil-stat-label">Modificateur de dégâts reçus</span>
+                        <span class="profil-stat-value"
+                            style="color:<?= $damageModifier < 1.0 ? '#adf3ad' : ($damageModifier > 1.0 ? '#f3adad' : '#fff') ?>;">
+                            <?php
+                            if ($damageModifier < 1.0)
+                                echo 'Dégâts /2';
+                            elseif ($damageModifier > 1.0)
+                                echo 'Dégâts ×2';
+                            else
+                                echo 'Normal';
+                            ?>
+                        </span>
+                    </div>
+                    <div class="profil-hp-bar-wrap">
+                        <div class="profil-hp-bar" style="width:<?= $pvPct ?>%;"></div>
+                    </div>
+                </div>
+
+                <!-- Equipped armor -->
+                <div class="profil-stat-box">
+                    <h2>Armure équipée</h2>
+                    <?php if ($armureEquipee): ?>
+                        <?php $aStats = getArmorStats($armureEquipee['taille'], $armureEquipee['matiere']); ?>
+                        <div class="profil-armor-card">
+                            <img class="profil-armor-img"
+                                src="<?= htmlspecialchars($armureEquipee['image'], ENT_QUOTES, 'UTF-8') ?>"
+                                alt="<?= htmlspecialchars($armureEquipee['nom'], ENT_QUOTES, 'UTF-8') ?>">
+                            <div class="profil-armor-info">
+                                <h3><?= htmlspecialchars($armureEquipee['nom'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                <p>
+                                    <?= htmlspecialchars(ucfirst(strtolower($armureEquipee['taille'])), ENT_QUOTES, 'UTF-8') ?>
+                                    &middot;
+                                    <?= htmlspecialchars(ucfirst(strtolower($armureEquipee['matiere'])), ENT_QUOTES, 'UTF-8') ?>
+                                </p>
+                                <p>+<?= $aStats['maxHP'] ?> HP max</p>
+                                <p><?= $aStats['heal'] >= 0 ? '+' : '' ?><?= $aStats['heal'] ?>% bonus de soin</p>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-desequiper" id="unequipArmureBtn">Déséquiper</button>
+                    <?php else: ?>
+                        <p class="profil-no-armor">Aucune armure équipée.</p>
+                        <p><a class="btnAutre" href="inventaire.php" style="font-size:0.95rem;">Voir l'inventaire</a></p>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Equipped weapon -->
+                <div class="profil-stat-box">
+                    <h2>Arme équipée</h2>
+                    <?php if ($armeEquipee): ?>
+                        <?php $wStats = getWeaponStats($armeEquipee['efficacite'], $armeEquipee['genre']); ?>
+                        <div class="profil-armor-card">
+                            <img class="profil-armor-img"
+                                src="<?= htmlspecialchars($armeEquipee['image'], ENT_QUOTES, 'UTF-8') ?>"
+                                alt="<?= htmlspecialchars($armeEquipee['nom'], ENT_QUOTES, 'UTF-8') ?>">
+                            <div class="profil-armor-info">
+                                <h3><?= htmlspecialchars($armeEquipee['nom'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                <p>
+                                    <?= htmlspecialchars(ucfirst(strtolower($armeEquipee['genre'])), ENT_QUOTES, 'UTF-8') ?>
+                                    &middot;
+                                    <?= htmlspecialchars(ucfirst(strtolower($armeEquipee['efficacite'])), ENT_QUOTES, 'UTF-8') ?>
+                                </p>
+                                <p><?= $wStats['goldBonus'] >= 0 ? '+' : '' ?><?= $wStats['goldBonus'] ?>% bonus gold</p>
+                                <p>
+                                    <?php
+                                    $d = $wStats['damageModifier'];
+                                    if ($d < 1.0)
+                                        echo 'Dégâts /2 (réduction)';
+                                    elseif ($d > 1.0)
+                                        echo 'Dégâts ×2 (pris)';
+                                    else
+                                        echo 'Dégâts normaux';
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-desequiper" id="unequipArmeBtn">Déséquiper</button>
+                    <?php else: ?>
+                        <p class="profil-no-armor">Aucune arme équipée.</p>
+                        <p><a class="btnAutre" href="inventaire.php" style="font-size:0.95rem;">Voir l'inventaire</a></p>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Demande d'or -->
+                <?php
+                $rewardLabels = ['+10 or', '+10 argent', '+10 bronze'];
+                $rewardColors = ['#d4af6f', '#b8b8b8', '#cd7f32'];
+                ?>
+                <div class="profil-stat-box">
+                    <h2>Demande d'or</h2>
+                    <div class="profil-stat-row" style="margin-bottom:10px;">
+                        <span class="profil-stat-label">Demandes utilisées</span>
+                        <span class="profil-stat-value"><?= $nbDemandesUsees ?> / 3</span>
+                    </div>
+                    <?php if ($nbDemandesUsees >= 3): ?>
+                        <p style="color:#888; font-size:0.88rem;">Vous avez utilisé toutes vos demandes disponibles.</p>
+                    <?php elseif ($demandeEnAttente): ?>
+                        <p class="demande-pending-msg">Demande en attente de validation par un administrateur...</p>
+                    <?php else: ?>
+                        <div class="profil-stat-row" style="margin-bottom:14px;">
+                            <span class="profil-stat-label">Récompense si acceptée</span>
+                            <span class="profil-stat-value" style="color:<?= $rewardColors[$nbDemandesUsees] ?>; font-weight:600;">
+                                <?= $rewardLabels[$nbDemandesUsees] ?>
+                            </span>
+                        </div>
+                        <button type="button" class="btn-primary" id="demandeOrBtn" style="width:100%;">Envoyer une demande</button>
+                        <p id="demandeOrMsg" style="font-size:0.85rem; margin-top:8px; display:none;"></p>
+                    <?php endif; ?>
+                </div>
+
+            </div><!-- /profil-col left -->
+            <div class="profil-col">
+
+                <!-- Ranked -->
+                <div class="profil-stat-box" style="border-color:<?= $rkColor ?>;">
+                    <h2 style="color:<?= $rkColor ?>;">&#9733; <?= htmlspecialchars($rkName) ?></h2>
+                    <div class="profil-stat-row">
+                        <span class="profil-stat-label">LP</span>
+                        <span class="profil-stat-value">
+                            <?php if ($ranked['rang'] >= 14): ?>
+                                <span style="color:<?= $rkColor ?>; font-weight:700;">MAX</span>
+                            <?php else: ?>
+                                <?= $ranked['lp'] ?> / 100
+                            <?php endif; ?>
+                        </span>
+                    </div>
+                    <div class="profil-stat-row">
+                        <span class="profil-stat-label">MMR</span>
+                        <span class="profil-stat-value" style="color:#aaa;"><?= $ranked['mmr'] ?></span>
+                    </div>
+                    <div class="profil-hp-bar-wrap" style="margin-top:10px;">
+                        <div class="profil-hp-bar" style="width:<?= $ranked['lp'] ?>%; background:<?= $rkColor ?>;"></div>
+                    </div>
+                </div>
+
+                <!-- Player quest stats -->
+                <div class="profil-stat-box">
+                    <h2>Statistiques</h2>
+                    <div class="profil-stat-rank">
+                        <span class="profil-stat-label">Rang : </span>
+                        <span class="profil-stat-value" style="color:<?= $rkColor ?>;"><?= htmlspecialchars($rkName) ?></span>
+                    </div>
+                    <div class="profil-stat-grid">
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">LP</span>
+                            <span class="profil-stat-value" style="color:<?= $rkColor ?>;">
+                                <?php if ($ranked['rang'] >= 14): ?>
+                                    <span style="font-weight:700;">MAX</span>
+                                <?php else: ?>
+                                    <?= $ranked['lp'] ?> / 100
+                                <?php endif; ?>
+                            </span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">MMR</span>
+                            <span class="profil-stat-value" style="color:#aaa;"><?= $ranked['mmr'] ?></span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">Enigmes jouées (carrière)</span>
+                            <span class="profil-stat-value"><?= $enigmaStats['totalPlays'] ?></span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">Taux de réussite</span>
+                            <span class="profil-stat-value" style="color:<?= $enigmaStats['taux'] >= 50 ? '#adf3ad' : '#f3adad' ?>;"><?= $enigmaStats['taux'] ?>%</span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">Faciles réussies</span>
+                            <span class="profil-stat-value"><?= $questStats['facile'] ?></span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">Moyennes réussies</span>
+                            <span class="profil-stat-value"><?= $questStats['moyen'] ?></span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">Difficiles réussies</span>
+                            <span class="profil-stat-value"><?= $questStats['difficile'] ?></span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">Magie réussies</span>
+                            <span class="profil-stat-value"><?= $questStats['magie'] ?></span>
+                        </div>
+                        <div class="profil-stat-row">
+                            <span class="profil-stat-label">Meilleure série</span>
+                            <span class="profil-stat-value"><?= $questStats['bestStreak'] ?></span>
+                        </div>
+                    </div>
+                    <div class="profil-hp-bar-wrap" style="margin-top:10px;">
+                        <div class="profil-hp-bar" style="width:<?= $enigmaStats['taux'] ?>%; background:<?= $enigmaStats['taux'] >= 50 ? '#4caf50' : '#c0392b' ?>;"></div>
+                    </div>
+                </div>
+
+                <!-- Change Password -->
+                <div class="profil-stat-box">
+                    <h2>Changer le mot de passe</h2>
+                    <div id="changePwMsg" class="profil-pw-msg" style="display:none;"></div>
+                    <div class="profil-pw-form">
+                        <div class="profil-pw-field">
+                            <label for="currentPw">Mot de passe actuel</label>
+                            <input type="password" id="currentPw" autocomplete="current-password">
+                        </div>
+                        <div class="profil-pw-field">
+                            <label for="newPw">Nouveau mot de passe</label>
+                            <input type="password" id="newPw" autocomplete="new-password">
+                        </div>
+                        <div class="profil-pw-field">
+                            <label for="confirmPw">Confirmer le nouveau mot de passe</label>
+                            <input type="password" id="confirmPw" autocomplete="new-password">
+                        </div>
+                        <button type="button" class="btn-primary" id="changePwBtn">Changer le mot de passe</button>
+                    </div>
+                </div>
+
+            </div><!-- /profil-col right -->
+            </div><!-- /profil-container -->
+        <?php endif; ?>
+    </main>
+    <?php require 'include/footer.php'; ?>
+    <script>
+        function unequipAction(btnId, action, onSuccess) {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                btn.disabled = true;
+                const fd = new FormData();
+                fd.append('action', action);
+                fetch('profil.php', { method: 'POST', body: fd })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            if (onSuccess) onSuccess(data);
+                            setTimeout(function () { location.reload(); }, 800);
+                        } else {
+                            btn.disabled = false;
+                            alert(data.message || 'Erreur inconnue');
+                        }
+                    })
+                    .catch(function () {
+                        btn.disabled = false;
+                        alert('Erreur réseau');
+                    });
+            });
+        }
+
+        unequipAction('unequipArmureBtn', 'unequip_armure', function (data) {
+            const hpBar = document.querySelector('.hpBar');
+            const hpText = document.querySelector('.hpText');
+            if (hpBar && hpText && data.newMaxHP > 0) {
+                const pct = Math.round(data.newPV / data.newMaxHP * 100);
+                hpBar.style.width = pct + '%';
+                hpText.textContent = 'PV: ' + data.newPV + '/' + data.newMaxHP;
+            }
+        });
+
+        unequipAction('unequipArmeBtn', 'unequip_arme', null);
+
+        // Password change (single step: current + new + confirm)
+        (function () {
+            const btn = document.getElementById('changePwBtn');
+            if (!btn) return;
+            const msg = document.getElementById('changePwMsg');
+            function showMsg(text, ok) {
+                msg.textContent = text;
+                msg.className = 'profil-pw-msg ' + (ok ? 'profil-pw-msg--ok' : 'profil-pw-msg--err');
+                msg.style.display = '';
+            }
+            btn.addEventListener('click', function () {
+                const current = document.getElementById('currentPw').value;
+                const newPw   = document.getElementById('newPw').value;
+                const confirm = document.getElementById('confirmPw').value;
+                if (!current || !newPw || !confirm) { showMsg('Veuillez remplir tous les champs.', false); return; }
+                btn.disabled = true;
+                const fd = new FormData();
+                fd.append('action',           'change_password');
+                fd.append('current_password', current);
+                fd.append('new_password',     newPw);
+                fd.append('confirm_password', confirm);
+                fetch('profil.php', { method: 'POST', body: fd })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        btn.disabled = false;
+                        if (data.success) {
+                            showMsg('Mot de passe changé avec succès !', true);
+                            document.getElementById('currentPw').value = '';
+                            document.getElementById('newPw').value     = '';
+                            document.getElementById('confirmPw').value = '';
+                        } else {
+                            showMsg(data.message || 'Erreur inconnue.', false);
+                        }
+                    })
+                    .catch(function () { showMsg('Erreur réseau.', false); btn.disabled = false; });
+            });
+        })();
+
+        // Demande d'or
+        (function () {
+            const btn = document.getElementById('demandeOrBtn');
+            if (!btn) return;
+            const msg = document.getElementById('demandeOrMsg');
+            btn.addEventListener('click', function () {
+                btn.disabled = true;
+                const fd = new FormData();
+                fd.append('action', 'demande_or');
+                fetch('profil.php', { method: 'POST', body: fd })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        msg.style.display = '';
+                        if (data.success) {
+                            msg.style.color = '#adf3ad';
+                            msg.textContent = 'Demande envoyée ! En attente de validation.';
+                            btn.style.display = 'none';
+                        } else {
+                            msg.style.color = '#e07070';
+                            msg.textContent = data.message || 'Erreur inconnue.';
+                            btn.disabled = false;
+                        }
+                    })
+                    .catch(function () {
+                        msg.style.display = '';
+                        msg.style.color = '#e07070';
+                        msg.textContent = 'Erreur réseau.';
+                        btn.disabled = false;
+                    });
+            });
+        })();
+    </script>
+</body>
+
+</html>
