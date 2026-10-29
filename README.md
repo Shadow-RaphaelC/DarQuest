@@ -3,11 +3,15 @@
 ## Description
 Le client souhaite avoir une application web intitulée Darquest qui permet d’acheter des items dans un magasin concernant le jeu World of Warcraft, ainsi que la gestion des items et l’évaluation de l’efficacité des items vendus. Chaque joueur a la possibilité d’acheter plusieurs items disponibles dans le magasin, plusieurs joueurs peuvent acheter des articles identiques, tant qu’il est disponible et en stock. Tout ajout sera mis dans un panier d’achat gérée dans une page différente.
 
+(school project, Jan–June 2026, team of 4)
+
+**Live site:** http://158.69.48.57/~darquest5/
+
 ## Team
-Raphael - Repo Setup, Infrastructure, Developer
-Mathis - Infrastructure, Developer
-Goufril - UI, Developer
-Vincent - Backend, Developer
+Raphael - Repo Maintenance, Infrastructure, Developer (PHP, JS, DB)
+Mathis - Infrastructure, Developer (DB, PHP, JS)
+Goufril - Developer (Visual UI and CSS)
+Vincent - Backend Developer (PHP and Database Queries)
 
 ## Technologies
 - Languages: SQL / HTML / CSS / JavaScript / PHP
@@ -26,3 +30,7 @@ dev → development
    
 ## Sprint Information
 Optionel: (https://educlgqc-my.sharepoint.com/:w:/g/personal/202286775_edu_clg_qc_ca/IQBJ7xnfyEVvT5EcBu20FbCzAdRvwV0LbViTxf-MpFHq8L4?e=ijYCGo)
+
+## Setup
+Copy `BD/config.example.php` to `BD/config.php` and fill in your database login.
+Copy `include/mail_config.php` settings the same way for email (not included).
